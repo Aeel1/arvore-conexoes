@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Árvore de Conexões</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.9/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis-network.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const { jsPDF } = window.jspdf;
+
+    function App() {
+      const [pessoas, setPessoas] = useState([]);
+      const [nome, setNome] = useState('');
+      const [dadosPessoais, setDadosPessoais] = useState('');
+      const [imagem, setImagem] = useState(null);
+      const [conexoes, setConexoes] = useState([]);
+      const [pessoaOrigem, setPessoaOrigem] = useState('');
+      const [pessoaDestino, setPessoaDestino] = useState('');
+      const [editIndex, setEditIndex] = useState(null);
+      const [showConexoes, setShowConexoes] = useState(false);
+      const [showPessoas, setShowPessoas] = useState(true);
+      const networkRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      // Carregar dados do localStorage
+      useEffect(() => {
+        const savedPessoas = localStorage.getItem('pessoas');
+        const savedConexoes = localStorage.getItem('conexoes');
+        if (savedPessoas) setPessoas(JSON.parse(savedPessoas));
+        if (savedConexoes) setConexoes(JSON.parse(savedConexoes));
+      }, []);
+
+      // Atualizar localStorage
+      useEffect(() => {
+        localStorage.setItem('pessoas', JSON.stringify(pessoas));
+        localStorage.setItem('conexoes', JSON.stringify(conexoes));
+      }, [pessoas, conexoes]);
+
+      // Inicializar o grafo
+      useEffect(() => {
+        const container = document.getElementById('network');
+        if (!container) return;
+
+        const nodes = pessoas.map((pessoa, index) => ({
+          id: index,
+          label: pessoa.nome,
+          title: `<div class="p-2">
+                    <h3 class="font-bold">${pessoa.nome}</h3>
+                    <p>${pessoa.dadosPessoais}</p>
+                    ${pessoa.imagem ? `<img src="${pessoa.imagem}" class="w-20 h-20 object-cover mt-2" />` : ''}
+                  </div>`,
+          shape: pessoa.imagem ? 'image' : 'box',
+          image: pessoa.imagem || undefined,
+        }));
+
+        const edges = conexoes.map((con, index) => ({
+          id: index,
+          from: con.from,
+          to: con.to,
+        }));
+
+        const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+        const options = {
+          nodes: { shapeProperties: { borderRadius: 8 }, font: { size: 14 } },
+          edges: { arrows: 'to', color: '#1f2937' },
+          physics: { stabilization: false },
+          interaction: { hover: true, tooltipDelay: 200 },
+        };
+
+        networkRef.current = new vis.Network(container, data, options);
+      }, [pessoas, conexoes]);
+
+      const handleImagemChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => setImagem(reader.result);
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const adicionarOuEditarPessoa = () => {
+        if (!nome || !dadosPessoais) {
+          alert('Por favor, preencha nome e dados pessoais.');
+          return;
+        }
+
+        if (editIndex !== null) {
+          const updatedPessoas = [...pessoas];
+          updatedPessoas[editIndex] = { nome, dadosPessoais, imagem };
+          setPessoas(updatedPessoas);
+          setEditIndex(null);
+        } else {
+          setPessoas([...pessoas, { nome, dadosPessoais, imagem }]);
+        }
+
+        setNome('');
+        setDadosPessoais('');
+        setImagem(null);
+      };
+
+      const editarPessoa = (index) => {
+        const pessoa = pessoas[index];
+        setNome(pessoa.nome);
+        setDadosPessoais(pessoa.dadosPessoais);
+        setImagem(pessoa.imagem);
+        setEditIndex(index);
+      };
+
+      const removerPessoa = (index) => {
+        if (!window.confirm(`Tem certeza que deseja remover ${pessoas[index].nome}?`)) return;
+
+        const updatedPessoas = pessoas.filter((_, i) => i !== index);
+        const updatedConexoes = conexoes
+          .filter((con) => con.from !== index && con.to !== index)
+          .map((con) => ({
+            ...con,
+            from: con.from > index ? con.from - 1 : con.from,
+            to: con.to > index ? con.to - 1 : con.to,
+          }));
+
+        setPessoas(updatedPessoas);
+        setConexoes(updatedConexoes);
+        if (editIndex === index) {
+          setEditIndex(null);
+          setNome('');
+          setDadosPessoais('');
+          setImagem(null);
+        }
+      };
+
+      const adicionarConexao = () => {
+        if (pessoaOrigem === '' || pessoaDestino === '' || pessoaOrigem === pessoaDestino) {
+          alert('Selecione duas pessoas diferentes para criar uma conexão.');
+          return;
+        }
+        setConexoes([...conexoes, { from: parseInt(pessoaOrigem), to: parseInt(pessoaDestino) }]);
+        setPessoaOrigem('');
+        setPessoaDestino('');
+      };
+
+      const removerConexao = (index) => {
+        const conexao = conexoes[index];
+        if (!window.confirm(`Tem certeza que deseja remover a conexão de ${pessoas[conexao.from].nome} para ${pessoas[conexao.to].nome}?`)) return;
+        setConexoes(conexoes.filter((_, i) => i !== index));
+      };
+
+      const exportarPNG = () => {
+        if (!networkRef.current) return;
+        const canvas = document.getElementById('network').getElementsByTagName('canvas')[0];
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = 'grafo.png';
+        link.click();
+      };
+
+      const exportarPDF = () => {
+        if (!networkRef.current) return;
+        const canvas = document.getElementById('network').getElementsByTagName('canvas')[0];
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('landscape');
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save('grafo.pdf');
+      };
+
+      const salvarProjeto = () => {
+        const projetoNome = prompt('Digite o nome do projeto:');
+        if (!projetoNome || projetoNome.trim() === '') {
+          alert('O nome do projeto não pode estar vazio. Salvamento cancelado.');
+          return;
+        }
+
+        const sanitizedNome = projetoNome
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '');
+
+        const projeto = { pessoas, conexoes };
+        const jsonStr = JSON.stringify(projeto, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${sanitizedNome}-conexoes.json`;
+        link.click();
+      };
+
+      const carregarProjeto = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const projeto = JSON.parse(event.target.result);
+            if (!projeto.pessoas || !projeto.conexoes) {
+              alert('Arquivo inválido: deve conter "pessoas" e "conexoes".');
+              return;
+            }
+            const isValidPessoas = projeto.pessoas.every(p => p.nome && p.dadosPessoais);
+            const isValidConexoes = projeto.conexoes.every(c => typeof c.from === 'number' && typeof c.to === 'number');
+            if (!isValidPessoas || !isValidConexoes) {
+              alert('Arquivo inválido: formato de dados incorreto.');
+              return;
+            }
+            setPessoas(projeto.pessoas);
+            setConexoes(projeto.conexoes);
+            setShowConexoes(false);
+            alert('Projeto carregado com sucesso!');
+          } catch (error) {
+            alert('Erro ao carregar o arquivo: formato JSON inválido.');
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      const novoProjeto = () => {
+        if (!window.confirm('Tem certeza que deseja criar um novo projeto? Todos os dados atuais serão perdidos.')) return;
+        setPessoas([]);
+        setConexoes([]);
+        setNome('');
+        setDadosPessoais('');
+        setImagem(null);
+        setPessoaOrigem('');
+        setPessoaDestino('');
+        setEditIndex(null);
+        setShowConexoes(false);
+        setShowPessoas(true);
+        localStorage.removeItem('pessoas');
+        localStorage.removeItem('conexoes');
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-100">
+          {/* Cabeçalho */}
+          <header className="bg-blue-900 text-white py-4 shadow-md">
+            <h1 className="text-2xl font-bold text-center">Árvore de Conexões</h1>
+          </header>
+
+          <div className="container mx-auto p-6">
+            {/* Rede de Conexões */}
+            <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Rede de Conexões</h2>
+                <button
+                  onClick={novoProjeto}
+                  className="bg-blue-700 text-white p-2 rounded-md hover:bg-blue-800 transition"
+                  title="Novo Projeto"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
+              </div>
+              <div id="network" className="w-full h-[500px] border border-gray-200 rounded-md mb-4"></div>
+              <div className="flex flex-wrap gap-4">
+                <button
+                  onClick={exportarPNG}
+                  className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition"
+                  title="Exportar como PNG"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={exportarPDF}
+                  className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition"
+                  title="Exportar como PDF"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={salvarProjeto}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                >
+                  Salvar Projeto
+                </button>
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                >
+                  Carregar Projeto
+                </button>
+                <input
+                  type="file"
+                  accept="application/json"
+                  onChange={carregarProjeto}
+                  className="hidden"
+                  ref={fileInputRef}
+                />
+              </div>
+            </div>
+
+            {/* Formulário para adicionar/editar pessoa */}
+            <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">{editIndex !== null ? 'Editar Pessoa' : 'Adicionar Pessoa'}</h2>
+              <div className="flex flex-col gap-4">
+                <input
+                  type="text"
+                  placeholder="Nome"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <textarea
+                  placeholder="Dados Pessoais (ex.: CPF, profissão)"
+                  value={dadosPessoais}
+                  onChange={(e) => setDadosPessoais(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ></textarea>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImagemChange}
+                  className="p-2 text-gray-600"
+                />
+                <div className="flex gap-4">
+                  <button
+                    onClick={adicionarOuEditarPessoa}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                  >
+                    {editIndex !== null ? 'Salvar Alterações' : 'Adicionar Pessoa'}
+                  </button>
+                  {editIndex !== null && (
+                    <button
+                      onClick={() => {
+                        setEditIndex(null);
+                        setNome('');
+                        setDadosPessoais('');
+                        setImagem(null);
+                      }}
+                      className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
+                    >
+                      Cancelar Edição
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Formulário para gerenciar conexões */}
+            <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Gerenciar Conexões</h2>
+              <div className="flex gap-4 mb-4">
+                <select
+                  value={pessoaOrigem}
+                  onChange={(e) => setPessoaOrigem(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Selecione a origem</option>
+                  {pessoas.map((pessoa, index) => (
+                    <option key={index} value={index}>{pessoa.nome}</option>
+                  ))}
+                </select>
+                <select
+                  value={pessoaDestino}
+                  onChange={(e) => setPessoaDestino(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Selecione o destino</option>
+                  {pessoas.map((pessoa, index) => (
+                    <option key={index} value={index}>{pessoa.nome}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={adicionarConexao}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                >
+                  Adicionar Conexão
+                </button>
+              </div>
+              <div className="flex items-center mb-2">
+                <button
+                  onClick={() => setShowConexoes(!showConexoes)}
+                  className="text-blue-600 hover:text-blue-700 flex items-center"
+                >
+                  {showConexoes ? (
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                  {showConexoes ? 'Recolher' : 'Expandir'} Conexões
+                </button>
+              </div>
+              {showConexoes && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Conexões Existentes</h3>
+                  {conexoes.length === 0 ? (
+                    <p className="text-gray-500">Nenhuma conexão adicionada.</p>
+                  ) : (
+                    <ul className="divide-y divide-gray-200">
+                      {conexoes.map((con, index) => (
+                        <li key={index} className="py-3 flex justify-between items-center">
+                          <span className="text-gray-700">{pessoas[con.from]?.nome || 'Desconhecido'} → {pessoas[con.to]?.nome || 'Desconhecido'}</span>
+                          <button
+                            onClick={() => removerConexao(index)}
+                            className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 transition"
+                          >
+                            Remover
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Lista de pessoas */}
+            <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+              <div className="flex items-center mb-2">
+                <button
+                  onClick={() => setShowPessoas(!showPessoas)}
+                  className="text-blue-600 hover:text-blue-700 flex items-center"
+                >
+                  {showPessoas ? (
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                  {showPessoas ? 'Recolher' : 'Expandir'} Pessoas
+                </button>
+              </div>
+              {showPessoas && (
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Pessoas Adicionadas</h2>
+                  {pessoas.length === 0 ? (
+                    <p className="text-gray-500">Nenhuma pessoa adicionada.</p>
+                  ) : (
+                    <ul className="divide-y divide-gray-200">
+                      {pessoas.map((pessoa, index) => (
+                        <li key={index} className="py-3 flex justify-between items-center">
+                          <div>
+                            <span className="font-semibold text-gray-800">{pessoa.nome}</span>
+                            <p className="text-sm text-gray-600">{pessoa.dadosPessoais}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => editarPessoa(index)}
+                              className="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => removerPessoa(index)}
+                              className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 transition"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
