@@ -126,7 +126,7 @@
             shapeProperties: { borderRadius: 8 },
             font: { size: 14, align: 'center', multi: true, color: '#1f2937' }
           },
-          edges: { arrows: 'to', color: '#1f2937' },
+          edges: { color: '#1f2937' },
           physics: false,
           interaction: { hover: true, tooltipDelay: 200, dragNodes: true },
         };
@@ -545,7 +545,7 @@
                     <ul className="divide-y divide-gray-200">
                       {conexoes.map((con, index) => (
                         <li key={index} className="py-3 flex justify-between items-center">
-                          <span className="text-gray-700">{pessoas[con.from]?.nome || 'Desconhecido'} → {pessoas[con.to]?.nome || 'Desconhecido'}</span>
+                          <span className="text-gray-700">{pessoas[con.from]?.nome || 'Desconhecido'} - {pessoas[con.to]?.nome || 'Desconhecido'}</span>
                           <button
                             onClick={() => removerConexao(index)}
                             className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 transition"
