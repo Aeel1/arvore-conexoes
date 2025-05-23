@@ -65,6 +65,9 @@
                   </div>`,
           shape: pessoa.imagem ? 'image' : 'box',
           image: pessoa.imagem || undefined,
+          fixed: true,
+          x: pessoa.position?.x || undefined,
+          y: pessoa.position?.y || undefined,
         }));
 
         const edges = conexoes.map((con, index) => ({
@@ -77,11 +80,36 @@
         const options = {
           nodes: { shapeProperties: { borderRadius: 8 }, font: { size: 14 } },
           edges: { arrows: 'to', color: '#1f2937' },
-          physics: { stabilization: false },
-          interaction: { hover: true, tooltipDelay: 200 },
+          physics: false,
+          interaction: { hover: true, tooltipDelay: 200, dragNodes: true },
         };
 
-        networkRef.current = new vis.Network(container, data, options);
+        const network = new vis.Network(container, data, options);
+        networkRef.current = network;
+
+        network.on('dragStart', (event) => {
+          if (event.nodes.length > 0) {
+            const nodeId = event.nodes[0];
+            data.nodes.update({ id: nodeId, fixed: false });
+          }
+        });
+
+        network.on('dragEnd', (event) => {
+          if (event.nodes.length > 0) {
+            const nodeId = event.nodes[0];
+            const position = network.getPositions([nodeId])[nodeId];
+            data.nodes.update({ id: nodeId, fixed: true });
+
+            const updatedPessoas = [...pessoas];
+            updatedPessoas[nodeId] = {
+              ...updatedPessoas[nodeId],
+              position: { x: position.x, y: position.y },
+            };
+            setPessoas(updatedPessoas);
+          }
+        });
+
+        return () => network.destroy();
       }, [pessoas, conexoes]);
 
       const handleImagemChange = (e) => {
@@ -107,6 +135,10 @@
         alert('Por favor, cole uma imagem válida.');
       };
 
+      const removerImagem = () => {
+        setImagem(null);
+      };
+
       const adicionarOuEditarPessoa = () => {
         if (!nome || !dadosPessoais) {
           alert('Por favor, preencha nome e dados pessoais.');
@@ -115,11 +147,16 @@
 
         if (editIndex !== null) {
           const updatedPessoas = [...pessoas];
-          updatedPessoas[editIndex] = { nome, dadosPessoais, imagem };
+          updatedPessoas[editIndex] = {
+            ...updatedPessoas[editIndex],
+            nome,
+            dadosPessoais,
+            imagem,
+          };
           setPessoas(updatedPessoas);
           setEditIndex(null);
         } else {
-          setPessoas([...pessoas, { nome, dadosPessoais, imagem }]);
+          setPessoas([...pessoas, { nome, dadosPessoais, imagem, position: null }]);
         }
 
         setNome('');
@@ -350,6 +387,21 @@
                     className="p-2 text-gray-600"
                   />
                   <p className="text-sm text-gray-500 mt-1">Ou pressione Ctrl+V para colar uma imagem.</p>
+                  {imagem && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <img
+                        src={imagem}
+                        alt="Pré-visualização"
+                        className="w-24 h-24 object-cover rounded-md border border-gray-300"
+                      />
+                      <button
+                        onClick={removerImagem}
+                        className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 transition"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-4">
                   <button
