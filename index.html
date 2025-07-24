@@ -38,12 +38,13 @@
       const [editIndex, setEditIndex] = useState(null);
       const [showConexoes, setShowConexoes] = useState(false);
       const [showPessoas, setShowPessoas] = useState(true);
+      const [showArrows, setShowArrows] = useState(false); // Novo estado para controlar setas
       const networkRef = useRef(null);
       const fileInputRef = useRef(null);
 
       // Função para formatar dados pessoais com quebras de linha
       const formatLabel = (nome, dadosPessoais) => {
-        const maxLength = 30; // Máximo de caracteres por linha
+        const maxLength = 30;
         const words = dadosPessoais.split(' ');
         let currentLine = '';
         const lines = [];
@@ -69,7 +70,6 @@
           setPessoas(JSON.parse(savedPessoas));
           setConexoes(JSON.parse(savedConexoes));
         } else {
-          // Exemplo automático para primeira visita
           const exemploPessoas = [
             { nome: 'João Silva', dadosPessoais: 'Advogado, CPF 123.456.789-00', imagem: null, position: { x: -200, y: 0 } },
             { nome: 'Maria Souza', dadosPessoais: 'Médica, CPF 987.654.321-00', imagem: null, position: { x: 0, y: -100 } },
@@ -77,9 +77,9 @@
             { nome: 'Ana Oliveira', dadosPessoais: 'Professora, CPF 321.654.987-00', imagem: null, position: { x: 0, y: 100 } }
           ];
           const exemploConexoes = [
-            { from: 0, to: 1 }, // João → Maria
-            { from: 1, to: 2 }, // Maria → Pedro
-            { from: 2, to: 3 }  // Pedro → Ana
+            { from: 0, to: 1 },
+            { from: 1, to: 2 },
+            { from: 2, to: 3 }
           ];
           setPessoas(exemploPessoas);
           setConexoes(exemploConexoes);
@@ -126,7 +126,7 @@
             shapeProperties: { borderRadius: 8 },
             font: { size: 14, align: 'center', multi: true, color: '#1f2937' }
           },
-          edges: { color: '#1f2937' },
+          edges: { arrows: showArrows ? 'to' : null, color: '#1f2937' }, // Controla visibilidade das setas
           physics: false,
           interaction: { hover: true, tooltipDelay: 200, dragNodes: true },
         };
@@ -157,7 +157,7 @@
         });
 
         return () => network.destroy();
-      }, [pessoas, conexoes]);
+      }, [pessoas, conexoes, showArrows]); // Adiciona showArrows como dependência
 
       const handleImagemChange = (e) => {
         const file = e.target.files[0];
@@ -341,6 +341,7 @@
         setEditIndex(null);
         setShowConexoes(false);
         setShowPessoas(true);
+        setShowArrows(false); // Reseta para não mostrar setas
         localStorage.removeItem('pessoas');
         localStorage.removeItem('conexoes');
       };
@@ -371,15 +372,26 @@
             <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">Rede de Conexões</h2>
-                <button
-                  onClick={novoProjeto}
-                  className="bg-blue-700 text-white p-2 rounded-md hover:bg-blue-800 transition"
-                  title="Novo Projeto"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={showArrows}
+                      onChange={() => setShowArrows(!showArrows)}
+                      className="mr-2"
+                    />
+                    Mostrar setas
+                  </label>
+                  <button
+                    onClick={novoProjeto}
+                    className="bg-blue-700 text-white p-2 rounded-md hover:bg-blue-800 transition"
+                    title="Novo Projeto"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div id="network" className="w-full h-[500px] border border-gray-200 rounded-md mb-4"></div>
               <div className="flex flex-wrap gap-4">
@@ -545,7 +557,9 @@
                     <ul className="divide-y divide-gray-200">
                       {conexoes.map((con, index) => (
                         <li key={index} className="py-3 flex justify-between items-center">
-                          <span className="text-gray-700">{pessoas[con.from]?.nome || 'Desconhecido'} - {pessoas[con.to]?.nome || 'Desconhecido'}</span>
+                          <span className="text-gray-700">
+                            {pessoas[con.from]?.nome || 'Desconhecido'} {showArrows ? '→' : '-'} {pessoas[con.to]?.nome || 'Desconhecido'}
+                          </span>
                           <button
                             onClick={() => removerConexao(index)}
                             className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 transition"
